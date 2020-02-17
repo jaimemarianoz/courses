@@ -1,0 +1,287 @@
+RED HAT CEPH STORAGE ARCHITECTURE AND ADMINISTRATION CEPH125
+------------------------------------------------------------
+
+CHAPTER 2
+DEPLOYING RED HAT CEPH STORAGE
+-------------------------------
+
+
+Pagina 38
+GUIDED EXERCISE - DEPLOYING CEPH USING ANSIBLE
+----------------------------------------------
+
+[student@workstation ~]$ ssh servera
+
+[student@servera ~]$ ssh-keygen -t rsa -f ~/.ssh/id_rsa -N ""
+
+[student@servera ~]$ for i in a b c d e 
+do 
+ssh-copy-id student@server$i 
+ssh-copy-id ceph@server$i 
+done 
+
+Ingresar para student el password student ; para ceph el password redhat
+
+[student@servera ~]$ sudo vi /usr/share/ceph-ansible/ansible.cfg
+[defaults]
+...output omitted...
+roles_path = ./roles
+# Be sure the user running Ansible has permissions on the logfile
+log_path = /tmp/ansible.log   # Modificar la ubicacion de los logs
+deprecation_warnings = false  # Descartar mensajes de alertas conocidas
+
+
+[student@servera ~]$ sudo vi /etc/ansible/hosts
+[mons]
+server[c:e]
+[mgrs]
+server[c:e]
+
+[student@servera ~]$ ansible mons -m ping
+
+[student@servera ~]$ ansible mgrs -m ping
+
+[student@servera ~]$ ansible mons -m command -a id
+
+[student@servera ~]$ ansible mons -m command -a id -b
+
+
+[student@servera ~]$ cd /usr/share/ceph-ansible/
+[student@servera ceph-ansible]$ sudo cp site.yml.sample site.yml
+[student@servera ceph-ansible]$ sudo vi site.yml
+...
+- hosts: osds
+gather_facts: false
+serial: 1 #Agregar esta linea
+
+[student@servera ceph-ansible]$ cat group_vars/all.yml
+---
+fetch_directory: ~/ceph-ansible-keys
+ntp_service_enabled: false
+ceph_origin: repository
+ceph_repository: rhcs
+ceph_rhcs_version: "3"
+ceph_repository_type: cdn
+rbd_cache: true
+rbd_cache_writethrough_until_flush: false
+rbd_client_directories: false
+monitor_interface: eth0
+journal_size: 1024
+public_network: 172.25.250.0/24
+cluster_network: "{{ public_network }}"
+ceph_conf_overrides:
+  global:
+    mon_osd_allow_primary_affinity: 1
+    mon_clock_drift_allowed: 0.5
+    osd_pool_default_size: 2
+    osd_pool_default_min_size: 1
+    mon_pg_warn_min_per_osd: 0
+    mon_pg_warn_max_per_osd: 0
+    mon_pg_warn_max_object_skew: 0
+  client:
+    rbd_default_features: 1
+
+[student@servera group_vars]$ cd ..
+[student@servera ceph-ansible]$ ansible-playbook site.yml
+
+[student@servera ceph-ansible]$ ssh ceph@serverc
+
+Validacion de la Instalacion
+----------------------------
+[ceph@serverc ~]$ ceph -s
+
+[ceph@serverc ~]$ cat /etc/ceph/ceph.conf
+
+[ceph@serverc ~]$ ps aux | grep ceph-mon
+
+[ceph@serverc ~]$ exit
+
+[student@servera ceph-ansible]$ sudo vi group_vars/osds.yml
+devices:
+- /dev/vdb
+osd_scenario: "collocated"
+
+[student@servera ceph-ansible]$ sudo vi /etc/ansible/hosts
+[mons]
+server[c:e]
+[mgrs]
+server[c:e]
+[osds]
+server[c:e]
+
+[student@servera ceph-ansible]$ ansible-playbook site.yml
+
+[student@servera ceph-ansible]$ ssh ceph@serverc
+[ceph@serverc ~]$ ceph -s
+
+[ceph@serverc ~]$ ceph -w
+
+[ceph@serverc ~]$ ps aux | grep ceph-mon
+
+[ceph@serverc ~]$ sudo systemctl stop ceph-mon.target
+[ceph@serverc ~]$ ps aux | grep ceph-mon
+
+[ceph@serverc ~]$ ceph -s
+
+[ceph@serverc ~]$ sudo systemctl start ceph-mon.target
+[ceph@serverc ~]$ ps aux | grep ceph-mon
+
+[ceph@serverc ~]$ ceph -s
+
+[ceph@serverc ~]$ sudo systemctl restart ceph-mon.target
+[ceph@serverc ~]$ ps aux | grep ceph-mon
+
+[ceph@serverc ~]$ ceph -s
+
+[ceph@serverc ~]$ ps aux | grep ceph-osd
+
+[ceph@serverc ~]$ sudo systemctl stop ceph-osd.target
+[ceph@serverc ~]$ ps aux | grep ceph-osd
+[ceph@serverc ~]$ ceph -s
+
+[ceph@serverc ~]$ ceph osd tree
+
+[ceph@serverc ~]$ sudo systemctl start ceph-osd.target
+[ceph@serverc ~]$ ps aux | grep ceph-osd
+[ceph@serverc ~]$ ceph osd tree
+
+[ceph@serverc ~]$ sudo systemctl stop ceph-osd@0
+[ceph@serverc ~]$ ceph osd tree
+
+[ceph@serverc ~]$ sudo systemctl start ceph-osd@0
+[ceph@serverc ~]$ ceph osd tree
+
+[ceph@serverc ~]$ ceph -s
+
+[ceph@serverc ~]$ ceph -v
+
+[ceph@serverc ~]$ exit
+
+[student@servera ceph-ansible]$ sudo vi group_vars/clients.yml
+copy_admin_key: true
+
+
+[student@servera ceph-ansible]$ sudo vi /etc/ansible/hosts
+[mons]
+server[c:e]
+[mgrs]
+server[c:e]
+[osds]
+server[c:e]
+[clients]
+servera
+
+[student@servera ceph-ansible]$ ansible-playbook --limit=clients site.yml
+
+[student@servera ceph-ansible]$ ssh ceph@servera
+[ceph@servera ~]$ ceph -s
+
+[ceph@servera ~]$ logout
+[student@servera ceph-ansible]$ logout
+
+PAGINA 54
+GUIDED EXERCISE EXPANDING A RED HAT CEPH STORAGE CLUSTER'S CAPACITY
+-------------------------------------------------------------------
+
+[student@workstation ~]$ ssh student@servera
+[student@servera ~]$ cd /usr/share/ceph-ansible
+[student@servera ceph-ansible]$ sudo vi group_vars/osds.yml
+devices:
+- /dev/vdb
+- /dev/vdc
+- /dev/vdd
+
+[student@servera ceph-ansible]$ ansible-playbook site.yml
+
+[student@servera ceph-ansible]$ ssh ceph@serverc
+[ceph@serverc ~]$ ceph osd stat
+[ceph@serverc ~]$ ceph -s
+
+[ceph@serverc ~]$ ceph osd tree
+[ceph@serverc ~]$ ceph osd df
+
+[ceph@serverc ~]$ logout
+
+PAGINA57
+LAB DEPLOYING RED HAT CEPH STORAGE
+----------------------------------
+
+[student@workstation ~]$ ssh servera
+
+[student@servera ~]$ ssh-copy-id student@serverf
+
+[student@servera ~]$ ssh-copy-id ceph@serverf
+
+[student@servera ~]$ cp -r /usr/share/ceph-ansible ~/serverf-cluster
+
+[student@servera ~]$ vim /home/student/serverf-cluster/ansible.cfg
+
+inventory = ./serverf-cluster-hosts
+
+[student@servera ~]$ cd ~/serverf-cluster
+[student@servera serverf-cluster]$ vi serverf-cluster-hosts
+[mons]
+serverf
+[mgrs]
+serverf
+[osds]
+serverf
+
+[student@servera serverf-cluster]$ ansible mons -i serverf-cluster-hosts -m ping
+
+[student@servera serverf-cluster]$ ansible mgrs -i serverf-cluster-hosts -m ping
+
+[student@servera serverf-cluster]$ ansible osds -i serverf-cluster-hosts -m ping
+
+[student@servera serverf-cluster]$ ansible mons -i serverf-cluster-hosts -m command -a id
+
+[student@servera serverf-cluster]$ ansible mons -i serverf-cluster-hosts -m command -a id -b
+
+In /home/student/serverf-cluster, copy group_vars/all.yml.sample to
+group_vars/all.yml and edit it to meet the following specification:
+
+[student@servera serverf-cluster]$ vi group_vars/all.yml \
+fetch_directory: ~/ceph-ansible-serverf-keys
+ntp_service_enabled: false
+ceph_origin: repository
+ceph_repository: rhcs
+ceph_rhcs_version: "3"
+ceph_repository_type: cdn
+rbd_cache: "true"
+rbd_cache_writethrough_until_flush: "false"
+rbd_client_directories: false
+monitor_interface: eth0
+journal_size: 1024
+public_network: 172.25.250.0/24
+cluster_network: "{{ public_network }}"
+common_single_host_mode: true
+ceph_conf_overrides:
+  global:
+    mon_osd_allow_primary_affinity: 1
+    mon_clock_drift_allowed: 0.5
+    osd_pool_default_size: 2
+    osd_pool_default_min_size: 1
+    mon_pg_warn_min_per_osd: 0
+    mon_pg_warn_max_per_osd: 0
+    mon_pg_warn_max_object_skew: 0
+  client:
+    rbd_default_features: 1
+
+[student@servera serverf-cluster]$ cd group_vars
+[student@servera group_vars]$ cp -f osds.yml.sample osds.yml
+[student@servera group_vars]$ vi osds.yml
+devices:
+- /dev/vdb
+- /dev/vdc
+- /dev/vdd
+osd_scenario: "collocated"
+
+[student@servera group_vars]$ cd ..
+[student@servera serverf-cluster]$ cp -f site.yml.sample site.yml
+[student@servera serverf-cluster]$ ansible-playbook -i serverf-cluster-hosts \
+> site.yml
+
+[student@servera serverf-cluster]$ ssh ceph@serverf
+[ceph@serverf ~]$ ceph -s
+
+[student@workstation ~]$ lab deploy-review grade
