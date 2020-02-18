@@ -1,0 +1,565 @@
+RED HAT CEPH STORAGE ARCHITECTURE AND ADMINISTRATION CEPH125
+------------------------------------------------------------
+
+CHAPTER 2
+DEPLOYING RED HAT CEPH STORAGE
+-------------------------------
+
+
+Pagina 38
+GUIDED EXERCISE - DEPLOYING CEPH USING ANSIBLE
+----------------------------------------------
+
+[student@workstation ~]$ ssh servera
+
+[student@servera ~]$ ssh-keygen -t rsa -f ~/.ssh/id_rsa -N ""
+
+[student@servera ~]$ for i in a b c d e 
+do 
+ssh-copy-id student@server$i 
+ssh-copy-id ceph@server$i 
+done 
+
+Ingresar para student el password student ; para ceph el password redhat
+
+[student@servera ~]$ sudo vi /usr/share/ceph-ansible/ansible.cfg
+[defaults]
+...output omitted...
+roles_path = ./roles
+# Be sure the user running Ansible has permissions on the logfile
+log_path = /tmp/ansible.log   # Modificar la ubicacion de los logs
+deprecation_warnings = false  # Descartar mensajes de alertas conocidas
+
+
+[student@servera ~]$ sudo vi /etc/ansible/hosts
+[mons]
+server[c:e]
+[mgrs]
+server[c:e]
+
+[student@servera ~]$ ansible mons -m ping
+
+[student@servera ~]$ ansible mgrs -m ping
+
+[student@servera ~]$ ansible mons -m command -a id
+
+[student@servera ~]$ ansible mons -m command -a id -b
+
+
+[student@servera ~]$ cd /usr/share/ceph-ansible/
+[student@servera ceph-ansible]$ sudo cp site.yml.sample site.yml
+[student@servera ceph-ansible]$ sudo vi site.yml
+...
+- hosts: osds
+gather_facts: false
+serial: 1 #Agregar esta linea
+
+[student@servera ceph-ansible]$ cat group_vars/all.yml
+---
+fetch_directory: ~/ceph-ansible-keys
+ntp_service_enabled: false
+ceph_origin: repository
+ceph_repository: rhcs
+ceph_rhcs_version: "3"
+ceph_repository_type: cdn
+rbd_cache: true
+rbd_cache_writethrough_until_flush: false
+rbd_client_directories: false
+monitor_interface: eth0
+journal_size: 1024
+public_network: 172.25.250.0/24
+cluster_network: "{{ public_network }}"
+ceph_conf_overrides:
+  global:
+    mon_osd_allow_primary_affinity: 1
+    mon_clock_drift_allowed: 0.5
+    osd_pool_default_size: 2
+    osd_pool_default_min_size: 1
+    mon_pg_warn_min_per_osd: 0
+    mon_pg_warn_max_per_osd: 0
+    mon_pg_warn_max_object_skew: 0
+  client:
+    rbd_default_features: 1
+
+[student@servera group_vars]$ cd ..
+[student@servera ceph-ansible]$ ansible-playbook site.yml
+
+[student@servera ceph-ansible]$ ssh ceph@serverc
+
+Validacion de la Instalacion
+----------------------------
+[ceph@serverc ~]$ ceph -s
+
+[ceph@serverc ~]$ cat /etc/ceph/ceph.conf
+
+[ceph@serverc ~]$ ps aux | grep ceph-mon
+
+[ceph@serverc ~]$ exit
+
+[student@servera ceph-ansible]$ sudo vi group_vars/osds.yml
+devices:
+- /dev/vdb
+osd_scenario: "collocated"
+
+[student@servera ceph-ansible]$ sudo vi /etc/ansible/hosts
+[mons]
+server[c:e]
+[mgrs]
+server[c:e]
+[osds]
+server[c:e]
+
+[student@servera ceph-ansible]$ ansible-playbook site.yml
+
+[student@servera ceph-ansible]$ ssh ceph@serverc
+[ceph@serverc ~]$ ceph -s
+
+[ceph@serverc ~]$ ceph -w
+
+[ceph@serverc ~]$ ps aux | grep ceph-mon
+
+[ceph@serverc ~]$ sudo systemctl stop ceph-mon.target
+[ceph@serverc ~]$ ps aux | grep ceph-mon
+
+[ceph@serverc ~]$ ceph -s
+
+[ceph@serverc ~]$ sudo systemctl start ceph-mon.target
+[ceph@serverc ~]$ ps aux | grep ceph-mon
+
+[ceph@serverc ~]$ ceph -s
+
+[ceph@serverc ~]$ sudo systemctl restart ceph-mon.target
+[ceph@serverc ~]$ ps aux | grep ceph-mon
+
+[ceph@serverc ~]$ ceph -s
+
+[ceph@serverc ~]$ ps aux | grep ceph-osd
+
+[ceph@serverc ~]$ sudo systemctl stop ceph-osd.target
+[ceph@serverc ~]$ ps aux | grep ceph-osd
+[ceph@serverc ~]$ ceph -s
+
+[ceph@serverc ~]$ ceph osd tree
+
+[ceph@serverc ~]$ sudo systemctl start ceph-osd.target
+[ceph@serverc ~]$ ps aux | grep ceph-osd
+[ceph@serverc ~]$ ceph osd tree
+
+[ceph@serverc ~]$ sudo systemctl stop ceph-osd@0
+[ceph@serverc ~]$ ceph osd tree
+
+[ceph@serverc ~]$ sudo systemctl start ceph-osd@0
+[ceph@serverc ~]$ ceph osd tree
+
+[ceph@serverc ~]$ ceph -s
+
+[ceph@serverc ~]$ ceph -v
+
+[ceph@serverc ~]$ exit
+
+[student@servera ceph-ansible]$ sudo vi group_vars/clients.yml
+copy_admin_key: true
+
+
+[student@servera ceph-ansible]$ sudo vi /etc/ansible/hosts
+[mons]
+server[c:e]
+[mgrs]
+server[c:e]
+[osds]
+server[c:e]
+[clients]
+servera
+
+[student@servera ceph-ansible]$ ansible-playbook --limit=clients site.yml
+
+[student@servera ceph-ansible]$ ssh ceph@servera
+[ceph@servera ~]$ ceph -s
+
+[ceph@servera ~]$ logout
+[student@servera ceph-ansible]$ logout
+
+PAGINA 54
+GUIDED EXERCISE EXPANDING A RED HAT CEPH STORAGE CLUSTER'S CAPACITY
+-------------------------------------------------------------------
+
+[student@workstation ~]$ ssh student@servera
+[student@servera ~]$ cd /usr/share/ceph-ansible
+[student@servera ceph-ansible]$ sudo vi group_vars/osds.yml
+devices:
+- /dev/vdb
+- /dev/vdc
+- /dev/vdd
+
+[student@servera ceph-ansible]$ ansible-playbook site.yml
+
+[student@servera ceph-ansible]$ ssh ceph@serverc
+[ceph@serverc ~]$ ceph osd stat
+[ceph@serverc ~]$ ceph -s
+
+[ceph@serverc ~]$ ceph osd tree
+[ceph@serverc ~]$ ceph osd df
+
+[ceph@serverc ~]$ logout
+
+PAGINA57
+LAB DEPLOYING RED HAT CEPH STORAGE
+----------------------------------
+
+[student@workstation ~]$ ssh servera
+
+[student@servera ~]$ ssh-copy-id student@serverf
+
+[student@servera ~]$ ssh-copy-id ceph@serverf
+
+[student@servera ~]$ cp -r /usr/share/ceph-ansible ~/serverf-cluster
+
+[student@servera ~]$ vim /home/student/serverf-cluster/ansible.cfg
+
+inventory = ./serverf-cluster-hosts
+
+[student@servera ~]$ cd ~/serverf-cluster
+[student@servera serverf-cluster]$ vi serverf-cluster-hosts
+[mons]
+serverf
+[mgrs]
+serverf
+[osds]
+serverf
+
+[student@servera serverf-cluster]$ ansible mons -i serverf-cluster-hosts -m ping
+
+[student@servera serverf-cluster]$ ansible mgrs -i serverf-cluster-hosts -m ping
+
+[student@servera serverf-cluster]$ ansible osds -i serverf-cluster-hosts -m ping
+
+[student@servera serverf-cluster]$ ansible mons -i serverf-cluster-hosts -m command -a id
+
+[student@servera serverf-cluster]$ ansible mons -i serverf-cluster-hosts -m command -a id -b
+
+In /home/student/serverf-cluster, copy group_vars/all.yml.sample to
+group_vars/all.yml and edit it to meet the following specification:
+
+[student@servera serverf-cluster]$ vi group_vars/all.yml \
+fetch_directory: ~/ceph-ansible-serverf-keys
+ntp_service_enabled: false
+ceph_origin: repository
+ceph_repository: rhcs
+ceph_rhcs_version: "3"
+ceph_repository_type: cdn
+rbd_cache: "true"
+rbd_cache_writethrough_until_flush: "false"
+rbd_client_directories: false
+monitor_interface: eth0
+journal_size: 1024
+public_network: 172.25.250.0/24
+cluster_network: "{{ public_network }}"
+common_single_host_mode: true
+ceph_conf_overrides:
+  global:
+    mon_osd_allow_primary_affinity: 1
+    mon_clock_drift_allowed: 0.5
+    osd_pool_default_size: 2
+    osd_pool_default_min_size: 1
+    mon_pg_warn_min_per_osd: 0
+    mon_pg_warn_max_per_osd: 0
+    mon_pg_warn_max_object_skew: 0
+  client:
+    rbd_default_features: 1
+
+[student@servera serverf-cluster]$ cd group_vars
+[student@servera group_vars]$ cp -f osds.yml.sample osds.yml
+[student@servera group_vars]$ vi osds.yml
+devices:
+- /dev/vdb
+- /dev/vdc
+- /dev/vdd
+osd_scenario: "collocated"
+
+[student@servera group_vars]$ cd ..
+[student@servera serverf-cluster]$ cp -f site.yml.sample site.yml
+[student@servera serverf-cluster]$ ansible-playbook -i serverf-cluster-hosts \
+> site.yml
+
+[student@servera serverf-cluster]$ ssh ceph@serverf
+[ceph@serverf ~]$ ceph -s
+
+[student@workstation ~]$ lab deploy-review grade
+
+
+CHAPTER 3 - CONFIGURING RED HAT CEPH STORAGE
+--------------------------------------------
+
+Pagina 76
+GUIDED EXERCISE - MANAGING REPLICATED POOLS
+-------------------------------------------
+[student@workstation ~]$ ssh ceph@serverc
+[ceph@serverc ~]$ ceph health
+[ceph@serverc ~]$ ceph osd pool create whirlpool 64
+[ceph@serverc ~]$ ceph osd pool application enable whirlpool rbd
+[ceph@serverc ~]$ ceph osd pool ls
+[ceph@serverc ~]$ ceph df
+
+[ceph@serverc ~]$ ceph osd pool rename whirlpool mypool
+[ceph@serverc ~]$ ceph osd pool ls detail
+
+[ceph@serverc ~]$ ceph osd pool set mypool size 3
+
+[ceph@serverc ~]$ rados -p mypool -N system put testconf /etc/ceph/ceph.conf
+[ceph@serverc ~]$ rados -p mypool put testkey /etc/ceph/ceph.client.admin.keyring
+
+[ceph@serverc ~]$ rados -p mypool -N system ls
+testconf
+[ceph@serverc ~]$ rados -p mypool ls
+testkey
+[ceph@serverc ~]$ rados -p mypool --all ls
+system testconf
+       testkey
+
+[ceph@serverc ~]$ ceph osd pool delete mypool
+
+[ceph@serverc ~]$ ceph osd pool delete mypool mypool --yes-i-really-really-mean-it
+
+Pagina 84
+GUIDED EXERCISE - MANAGING ERASURE CODED POOLS
+----------------------------------------------
+[ceph@serverc ~]$ ceph osd erasure-code-profile ls
+
+[ceph@serverc ~]$ ceph osd erasure-code-profile get default
+
+[ceph@serverc ~]$ ceph osd erasure-code-profile set ceph125 k=3 m=2 \
+crush-failure-domain=osd
+
+[ceph@serverc ~]$ ceph osd erasure-code-profile get ceph125
+
+[ceph@serverc ~]$ ceph osd pool create myecpool 64 64 erasure ceph125
+
+[ceph@serverc ~]$ ceph osd pool application enable myecpool rgw
+
+[ceph@serverc ~]$ ceph df
+
+[ceph@serverc ~]$ ceph osd pool ls detail
+
+[ceph@serverc ~]$ ceph health
+
+[ceph@serverc ~]$ rados -p myecpool put mytest /usr/share/dict/words
+
+[ceph@serverc ~]$ ceph df
+
+[ceph@serverc ~]$ rados -p myecpool get mytest /tmp/words
+
+[ceph@serverc ~]$ diff /tmp/words /usr/share/dict/words
+
+Pagina 93
+GUIDED EXERCISE - MODIFYING SETTINGS IN THE CONFIGURATION FILE
+--------------------------------------------------------------
+
+[ceph@serverc ~]$ ceph osd pool delete myecpool
+
+[ceph@serverc ~]$ ceph osd pool delete myecpool myecpool \
+--yes-i-really-really-mean-it
+
+ceph@serverc ~]$ ceph daemon mon.serverc config show
+
+[ceph@serverc ~]$ ceph daemon mon.serverc config get mon_allow_pool_delete
+{
+    "mon_allow_pool_delete": "false"
+}
+
+[ceph@serverc ~]$ ceph daemon osd.0 config get debug_osd
+
+[ceph@serverc ~]$ cp /etc/ceph/ceph.conf /etc/ceph/ceph.conf.save
+
+[student@servera ~]$ sudo vi /usr/share/ceph-ansible/group_vars/all.yml
+
+...
+ceph_conf_overrides:
+  global:
+    mon_osd_allow_primary_affinity: 1
+    mon_clock_drift_allowed: 0.5
+    osd_pool_default_size: 2
+    osd_pool_default_min_size: 1
+    mon_pg_warn_min_per_osd: 0
+    mon_pg_warn_max_per_osd: 0
+    mon_pg_warn_max_object_skew: 0
+    mon_allow_pool_delete: true # add this line
+  osd:                          # add this line  
+    debug_osd: 10               # add this line
+  client:
+    rbd_default_features: 1
+    debug_ms: 1                 # add this line
+...
+
+[student@servera ~]$ cd /usr/share/ceph-ansible
+[student@servera ceph-ansible]$ ansible-playbook site.yml
+
+[ceph@serverc ~]$ diff /etc/ceph/ceph.conf /etc/ceph/ceph.conf.save
+
+[ceph@serverc ~]$ sudo systemctl restart ceph-mon.target
+[ceph@serverc ~]$ ceph daemon mon.serverc config get mon_allow_pool_delete
+
+[ceph@serverc ~]$ ceph osd pool delete myecpool myecpool \
+--yes-i-really-really-mean-it
+
+[student@servera ~]$ sudo vi /usr/share/ceph-ansible/group_vars/all.yml
+
+...
+ceph_conf_overrides:
+  global:
+    mon_osd_allow_primary_affinity: 1
+    mon_clock_drift_allowed: 0.5
+    osd_pool_default_size: 2
+    osd_pool_default_min_size: 1
+    mon_pg_warn_min_per_osd: 0
+    mon_pg_warn_max_per_osd: 0
+    mon_pg_warn_max_object_skew: 0
+    mon_allow_pool_delete: true # add this line
+  client:
+    rbd_default_features: 1
+...
+
+[student@servera ~]$ cd /usr/share/ceph-ansible
+[student@servera ceph-ansible]$ ansible-playbook site.yml
+
+
+[ceph@serverc ~]$ systemctl restart ceph-osd@0.service
+
+[ceph@serverc ~]$ ceph daemon osd.0 config get debug_osd
+{
+"debug_osd": "1/5"
+}
+
+
+Pagina 105
+GUIDED EXERCISE - MANAGING CEPH AUTHENTICATION
+----------------------------------------------
+
+[ceph@serverc ~]$ ceph osd pool ls
+
+[ceph@serverc ~]$ ceph auth get-or-create client.docedit \
+mon 'allow r' \
+osd 'allow rw pool=mypool namespace=docs' \
+-o /etc/ceph/ceph.client.docedit.keyring
+
+[ceph@serverc ~]$ ceph auth get-or-create client.docget \
+mon 'allow r' \
+osd 'allow r pool=mypool namespace=docs' \
+-o /etc/ceph/ceph.client.docget.keyring
+
+[ceph@serverc ~]$ ceph auth list
+
+[ceph@serverc ~]$ scp /etc/ceph/ceph.client.docedit.keyring servera:/etc/ceph/
+
+[ceph@serverc ~]$ scp /etc/ceph/ceph.client.docget.keyring servera:/etc/ceph/
+
+[ceph@servera ~]$ rados --id docedit -p mypool -N docs put testdoc /etc/services
+[ceph@servera ~]$ rados --id docget -p mypool -N docs get testdoc /tmp/test
+[ceph@servera ~]$ diff /etc/services /tmp/test
+
+[ceph@servera ~]$ rados --id docget -p mypool -N docs put mywritetest /etc/services
+error putting mypool/mywritetest: (1) Operation not permitted
+
+
+[ceph@serverc ~]$ ceph auth caps client.docget \
+mon 'allow r' \
+osd 'allow rw pool=mypool namespace=docs, allow rw pool=docarchive'
+
+[ceph@serverc ~]$ rados --id docget -p mypool -N docs put mywritetest /etc/services
+
+[ceph@serverc ~]$ rm /etc/ceph/ceph.client.docedit.keyring
+[ceph@serverc ~]$ ssh servera rm /etc/ceph/ceph.client.docedit.keyring
+
+[ceph@serverc ~]$ ceph auth del client.docedit
+
+[ceph@serverc ~]$ rm /etc/ceph/ceph.client.docget.keyring
+[ceph@serverc ~]$ ssh servera rm /etc/ceph/ceph.client.docget.keyring
+
+[ceph@serverc ~]$ ceph auth del client.docget
+
+Pagina 108
+LAB - CONFIGURING RED HAT CEPH STORAGE
+--------------------------------------
+[student@workstation ~]$ lab ceph-config setup
+
+[student@workstation ~]$ ssh ceph@serverc
+
+[ceph@serverc ~]$ ceph osd pool delete mypool mypool \
+--yes-i-really-really-mean-it
+
+[ceph@serverc ~]$ ceph osd pool create blue 64
+
+[ceph@serverc ~]$ ceph osd pool set blue size 3
+
+[ceph@serverc ~]$ ceph osd pool application enable blue rbd
+
+[ceph@serverc ~]$ ceph osd pool ls detail
+
+[ceph@serverc ~]$ ceph osd erasure-code-profile ls
+
+[ceph@serverc ~]$ ceph osd erasure-code-profile get default
+
+[ceph@serverc ~]$ ceph osd pool create yellow 64 64 erasure default
+
+[ceph@serverc ~]$ ceph osd pool application enable yellow rgw
+
+[ceph@serverc ~]$ ceph osd pool ls detail
+
+[ceph@serverc ~]$ ceph daemon mon.serverc config get mon_max_pg_per_osd
+{
+"mon_max_pg_per_osd": "200"
+}
+
+[student@servera ~]$ sudo vi /usr/share/ceph-ansible/group_vars/all.yml
+
+...
+ceph_conf_overrides:
+  global:
+    mon_osd_allow_primary_affinity: 1
+    mon_clock_drift_allowed: 0.5
+    osd_pool_default_size: 2
+    osd_pool_default_min_size: 1
+    mon_pg_warn_min_per_osd: 0
+    mon_pg_warn_max_per_osd: 0
+    mon_pg_warn_max_object_skew: 0
+    mon_allow_pool_delete: false  # add this line
+    mon_max_pg_per_osd: 400       # add this line
+  client:
+    rbd_default_features: 1
+...
+
+[student@servera ~]$ cd /usr/share/ceph-ansible
+[student@servera ceph-ansible]$ ansible-playbook site.yml
+
+[ceph@serverc ~]$ sudo systemctl restart ceph-mon.target
+[ceph@serverc ~]$ ceph daemon mon.serverc config get mon_allow_pool_delete
+{
+"mon_allow_pool_delete": "false"
+}
+
+[ceph@serverc ~]$ ceph daemon mon.serverc config get mon_max_pg_per_osd
+{
+"mon_max_pg_per_osd": "400"
+}
+
+[ceph@serverc ~]$ ceph auth get-or-create client.wcolor \
+mon 'allow r' \
+osd 'allow rw pool=blue' \
+-o /etc/ceph/ceph.client.wcolor.keyring
+
+[ceph@serverc ~]$ ceph auth get-or-create client.rcolor \
+mon 'allow r' \
+osd 'allow r pool=blue object_prefix rgb_' \
+-o /etc/ceph/ceph.client.rcolor.keyring
+
+[ceph@serverc ~]$ scp /etc/ceph/ceph.client.wcolor.keyring servera:/etc/ceph/
+
+[ceph@serverc ~]$ scp /etc/ceph/ceph.client.rcolor.keyring servera:/etc/ceph/
+
+[ceph@servera ~]$ rados --id wcolor -p blue put rgb_colors /etc/DIR_COLORS.256color
+
+[ceph@servera ~]$ rados --id rcolor -p blue get rgb_colors /tmp/color.out
+[ceph@servera ~]$ diff /etc/DIR_COLORS.256color /tmp/color.out
+
+[student@workstation ~]$ lab ceph-config grade
+
+[student@workstation ~]$ lab ceph-config cleanup
