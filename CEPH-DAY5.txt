@@ -1,0 +1,1701 @@
+RED HAT CEPH STORAGE ARCHITECTURE AND ADMINISTRATION CEPH125
+------------------------------------------------------------
+
+CHAPTER 2
+DEPLOYING RED HAT CEPH STORAGE
+-------------------------------
+
+
+Pagina 38
+GUIDED EXERCISE - DEPLOYING CEPH USING ANSIBLE
+----------------------------------------------
+
+[student@workstation ~]$ ssh servera
+
+[student@servera ~]$ ssh-keygen -t rsa -f ~/.ssh/id_rsa -N ""
+
+[student@servera ~]$ for i in a b c d e 
+do 
+ssh-copy-id student@server$i 
+ssh-copy-id ceph@server$i 
+done 
+
+Ingresar para student el password student ; para ceph el password redhat
+
+[student@servera ~]$ sudo vi /usr/share/ceph-ansible/ansible.cfg
+[defaults]
+...output omitted...
+roles_path = ./roles
+# Be sure the user running Ansible has permissions on the logfile
+log_path = /tmp/ansible.log   # Modificar la ubicacion de los logs
+deprecation_warnings = false  # Descartar mensajes de alertas conocidas
+
+
+[student@servera ~]$ sudo vi /etc/ansible/hosts
+[mons]
+server[c:e]
+[mgrs]
+server[c:e]
+
+[student@servera ~]$ ansible mons -m ping
+
+[student@servera ~]$ ansible mgrs -m ping
+
+[student@servera ~]$ ansible mons -m command -a id
+
+[student@servera ~]$ ansible mons -m command -a id -b
+
+
+[student@servera ~]$ cd /usr/share/ceph-ansible/
+[student@servera ceph-ansible]$ sudo cp site.yml.sample site.yml
+[student@servera ceph-ansible]$ sudo vi site.yml
+...
+- hosts: osds
+gather_facts: false
+serial: 1 #Agregar esta linea
+
+[student@servera ceph-ansible]$ cat group_vars/all.yml
+---
+fetch_directory: ~/ceph-ansible-keys
+ntp_service_enabled: false
+ceph_origin: repository
+ceph_repository: rhcs
+ceph_rhcs_version: "3"
+ceph_repository_type: cdn
+rbd_cache: true
+rbd_cache_writethrough_until_flush: false
+rbd_client_directories: false
+monitor_interface: eth0
+journal_size: 1024
+public_network: 172.25.250.0/24
+cluster_network: "{{ public_network }}"
+ceph_conf_overrides:
+  global:
+    mon_osd_allow_primary_affinity: 1
+    mon_clock_drift_allowed: 0.5
+    osd_pool_default_size: 2
+    osd_pool_default_min_size: 1
+    mon_pg_warn_min_per_osd: 0
+    mon_pg_warn_max_per_osd: 0
+    mon_pg_warn_max_object_skew: 0
+  client:
+    rbd_default_features: 1
+
+[student@servera group_vars]$ cd ..
+[student@servera ceph-ansible]$ ansible-playbook site.yml
+
+[student@servera ceph-ansible]$ ssh ceph@serverc
+
+Validacion de la Instalacion
+----------------------------
+[ceph@serverc ~]$ ceph -s
+
+[ceph@serverc ~]$ cat /etc/ceph/ceph.conf
+
+[ceph@serverc ~]$ ps aux | grep ceph-mon
+
+[ceph@serverc ~]$ exit
+
+[student@servera ceph-ansible]$ sudo vi group_vars/osds.yml
+devices:
+- /dev/vdb
+osd_scenario: "collocated"
+
+[student@servera ceph-ansible]$ sudo vi /etc/ansible/hosts
+[mons]
+server[c:e]
+[mgrs]
+server[c:e]
+[osds]
+server[c:e]
+
+[student@servera ceph-ansible]$ ansible-playbook site.yml
+
+[student@servera ceph-ansible]$ ssh ceph@serverc
+[ceph@serverc ~]$ ceph -s
+
+[ceph@serverc ~]$ ceph -w
+
+[ceph@serverc ~]$ ps aux | grep ceph-mon
+
+[ceph@serverc ~]$ sudo systemctl stop ceph-mon.target
+[ceph@serverc ~]$ ps aux | grep ceph-mon
+
+[ceph@serverc ~]$ ceph -s
+
+[ceph@serverc ~]$ sudo systemctl start ceph-mon.target
+[ceph@serverc ~]$ ps aux | grep ceph-mon
+
+[ceph@serverc ~]$ ceph -s
+
+[ceph@serverc ~]$ sudo systemctl restart ceph-mon.target
+[ceph@serverc ~]$ ps aux | grep ceph-mon
+
+[ceph@serverc ~]$ ceph -s
+
+[ceph@serverc ~]$ ps aux | grep ceph-osd
+
+[ceph@serverc ~]$ sudo systemctl stop ceph-osd.target
+[ceph@serverc ~]$ ps aux | grep ceph-osd
+[ceph@serverc ~]$ ceph -s
+
+[ceph@serverc ~]$ ceph osd tree
+
+[ceph@serverc ~]$ sudo systemctl start ceph-osd.target
+[ceph@serverc ~]$ ps aux | grep ceph-osd
+[ceph@serverc ~]$ ceph osd tree
+
+[ceph@serverc ~]$ sudo systemctl stop ceph-osd@0
+[ceph@serverc ~]$ ceph osd tree
+
+[ceph@serverc ~]$ sudo systemctl start ceph-osd@0
+[ceph@serverc ~]$ ceph osd tree
+
+[ceph@serverc ~]$ ceph -s
+
+[ceph@serverc ~]$ ceph -v
+
+[ceph@serverc ~]$ exit
+
+[student@servera ceph-ansible]$ sudo vi group_vars/clients.yml
+copy_admin_key: true
+
+
+[student@servera ceph-ansible]$ sudo vi /etc/ansible/hosts
+[mons]
+server[c:e]
+[mgrs]
+server[c:e]
+[osds]
+server[c:e]
+[clients]
+servera
+
+[student@servera ceph-ansible]$ ansible-playbook --limit=clients site.yml
+
+[student@servera ceph-ansible]$ ssh ceph@servera
+[ceph@servera ~]$ ceph -s
+
+[ceph@servera ~]$ logout
+[student@servera ceph-ansible]$ logout
+
+PAGINA 54
+GUIDED EXERCISE EXPANDING A RED HAT CEPH STORAGE CLUSTER'S CAPACITY
+-------------------------------------------------------------------
+
+[student@workstation ~]$ ssh student@servera
+[student@servera ~]$ cd /usr/share/ceph-ansible
+[student@servera ceph-ansible]$ sudo vi group_vars/osds.yml
+devices:
+- /dev/vdb
+- /dev/vdc
+- /dev/vdd
+
+[student@servera ceph-ansible]$ ansible-playbook site.yml
+
+[student@servera ceph-ansible]$ ssh ceph@serverc
+[ceph@serverc ~]$ ceph osd stat
+[ceph@serverc ~]$ ceph -s
+
+[ceph@serverc ~]$ ceph osd tree
+[ceph@serverc ~]$ ceph osd df
+
+[ceph@serverc ~]$ logout
+
+PAGINA57
+LAB DEPLOYING RED HAT CEPH STORAGE
+----------------------------------
+
+[student@workstation ~]$ ssh servera
+
+[student@servera ~]$ ssh-copy-id student@serverf
+
+[student@servera ~]$ ssh-copy-id ceph@serverf
+
+[student@servera ~]$ cp -r /usr/share/ceph-ansible ~/serverf-cluster
+
+[student@servera ~]$ vim /home/student/serverf-cluster/ansible.cfg
+
+inventory = ./serverf-cluster-hosts
+
+[student@servera ~]$ cd ~/serverf-cluster
+[student@servera serverf-cluster]$ vi serverf-cluster-hosts
+[mons]
+serverf
+[mgrs]
+serverf
+[osds]
+serverf
+
+[student@servera serverf-cluster]$ ansible mons -i serverf-cluster-hosts -m ping
+
+[student@servera serverf-cluster]$ ansible mgrs -i serverf-cluster-hosts -m ping
+
+[student@servera serverf-cluster]$ ansible osds -i serverf-cluster-hosts -m ping
+
+[student@servera serverf-cluster]$ ansible mons -i serverf-cluster-hosts -m command -a id
+
+[student@servera serverf-cluster]$ ansible mons -i serverf-cluster-hosts -m command -a id -b
+
+In /home/student/serverf-cluster, copy group_vars/all.yml.sample to
+group_vars/all.yml and edit it to meet the following specification:
+
+[student@servera serverf-cluster]$ vi group_vars/all.yml \
+fetch_directory: ~/ceph-ansible-serverf-keys
+ntp_service_enabled: false
+ceph_origin: repository
+ceph_repository: rhcs
+ceph_rhcs_version: "3"
+ceph_repository_type: cdn
+rbd_cache: "true"
+rbd_cache_writethrough_until_flush: "false"
+rbd_client_directories: false
+monitor_interface: eth0
+journal_size: 1024
+public_network: 172.25.250.0/24
+cluster_network: "{{ public_network }}"
+common_single_host_mode: true
+ceph_conf_overrides:
+  global:
+    mon_osd_allow_primary_affinity: 1
+    mon_clock_drift_allowed: 0.5
+    osd_pool_default_size: 2
+    osd_pool_default_min_size: 1
+    mon_pg_warn_min_per_osd: 0
+    mon_pg_warn_max_per_osd: 0
+    mon_pg_warn_max_object_skew: 0
+  client:
+    rbd_default_features: 1
+
+[student@servera serverf-cluster]$ cd group_vars
+[student@servera group_vars]$ cp -f osds.yml.sample osds.yml
+[student@servera group_vars]$ vi osds.yml
+devices:
+- /dev/vdb
+- /dev/vdc
+- /dev/vdd
+osd_scenario: "collocated"
+
+[student@servera group_vars]$ cd ..
+[student@servera serverf-cluster]$ cp -f site.yml.sample site.yml
+[student@servera serverf-cluster]$ ansible-playbook -i serverf-cluster-hosts \
+> site.yml
+
+[student@servera serverf-cluster]$ ssh ceph@serverf
+[ceph@serverf ~]$ ceph -s
+
+[student@workstation ~]$ lab deploy-review grade
+
+
+CHAPTER 3 - CONFIGURING RED HAT CEPH STORAGE
+--------------------------------------------
+
+Pagina 76
+GUIDED EXERCISE - MANAGING REPLICATED POOLS
+-------------------------------------------
+[student@workstation ~]$ ssh ceph@serverc
+[ceph@serverc ~]$ ceph health
+[ceph@serverc ~]$ ceph osd pool create whirlpool 64
+[ceph@serverc ~]$ ceph osd pool application enable whirlpool rbd
+[ceph@serverc ~]$ ceph osd pool ls
+[ceph@serverc ~]$ ceph df
+
+[ceph@serverc ~]$ ceph osd pool rename whirlpool mypool
+[ceph@serverc ~]$ ceph osd pool ls detail
+
+[ceph@serverc ~]$ ceph osd pool set mypool size 3
+
+[ceph@serverc ~]$ rados -p mypool -N system put testconf /etc/ceph/ceph.conf
+[ceph@serverc ~]$ rados -p mypool put testkey /etc/ceph/ceph.client.admin.keyring
+
+[ceph@serverc ~]$ rados -p mypool -N system ls
+testconf
+[ceph@serverc ~]$ rados -p mypool ls
+testkey
+[ceph@serverc ~]$ rados -p mypool --all ls
+system testconf
+       testkey
+
+[ceph@serverc ~]$ ceph osd pool delete mypool
+
+[ceph@serverc ~]$ ceph osd pool delete mypool mypool --yes-i-really-really-mean-it
+
+Pagina 84
+GUIDED EXERCISE - MANAGING ERASURE CODED POOLS
+----------------------------------------------
+[ceph@serverc ~]$ ceph osd erasure-code-profile ls
+
+[ceph@serverc ~]$ ceph osd erasure-code-profile get default
+
+[ceph@serverc ~]$ ceph osd erasure-code-profile set ceph125 k=3 m=2 \
+crush-failure-domain=osd
+
+[ceph@serverc ~]$ ceph osd erasure-code-profile get ceph125
+
+[ceph@serverc ~]$ ceph osd pool create myecpool 64 64 erasure ceph125
+
+[ceph@serverc ~]$ ceph osd pool application enable myecpool rgw
+
+[ceph@serverc ~]$ ceph df
+
+[ceph@serverc ~]$ ceph osd pool ls detail
+
+[ceph@serverc ~]$ ceph health
+
+[ceph@serverc ~]$ rados -p myecpool put mytest /usr/share/dict/words
+
+[ceph@serverc ~]$ ceph df
+
+[ceph@serverc ~]$ rados -p myecpool get mytest /tmp/words
+
+[ceph@serverc ~]$ diff /tmp/words /usr/share/dict/words
+
+Pagina 93
+GUIDED EXERCISE - MODIFYING SETTINGS IN THE CONFIGURATION FILE
+--------------------------------------------------------------
+
+[ceph@serverc ~]$ ceph osd pool delete myecpool
+
+[ceph@serverc ~]$ ceph osd pool delete myecpool myecpool \
+--yes-i-really-really-mean-it
+
+ceph@serverc ~]$ ceph daemon mon.serverc config show
+
+[ceph@serverc ~]$ ceph daemon mon.serverc config get mon_allow_pool_delete
+{
+    "mon_allow_pool_delete": "false"
+}
+
+[ceph@serverc ~]$ ceph daemon osd.0 config get debug_osd
+
+[ceph@serverc ~]$ cp /etc/ceph/ceph.conf /etc/ceph/ceph.conf.save
+
+[student@servera ~]$ sudo vi /usr/share/ceph-ansible/group_vars/all.yml
+
+...
+ceph_conf_overrides:
+  global:
+    mon_osd_allow_primary_affinity: 1
+    mon_clock_drift_allowed: 0.5
+    osd_pool_default_size: 2
+    osd_pool_default_min_size: 1
+    mon_pg_warn_min_per_osd: 0
+    mon_pg_warn_max_per_osd: 0
+    mon_pg_warn_max_object_skew: 0
+    mon_allow_pool_delete: true # add this line
+  osd:                          # add this line  
+    debug_osd: 10               # add this line
+  client:
+    rbd_default_features: 1
+    debug_ms: 1                 # add this line
+...
+
+[student@servera ~]$ cd /usr/share/ceph-ansible
+[student@servera ceph-ansible]$ ansible-playbook site.yml
+
+[ceph@serverc ~]$ diff /etc/ceph/ceph.conf /etc/ceph/ceph.conf.save
+
+[ceph@serverc ~]$ sudo systemctl restart ceph-mon.target
+[ceph@serverc ~]$ ceph daemon mon.serverc config get mon_allow_pool_delete
+
+[ceph@serverc ~]$ ceph osd pool delete myecpool myecpool \
+--yes-i-really-really-mean-it
+
+[student@servera ~]$ sudo vi /usr/share/ceph-ansible/group_vars/all.yml
+
+...
+ceph_conf_overrides:
+  global:
+    mon_osd_allow_primary_affinity: 1
+    mon_clock_drift_allowed: 0.5
+    osd_pool_default_size: 2
+    osd_pool_default_min_size: 1
+    mon_pg_warn_min_per_osd: 0
+    mon_pg_warn_max_per_osd: 0
+    mon_pg_warn_max_object_skew: 0
+    mon_allow_pool_delete: true # add this line
+  client:
+    rbd_default_features: 1
+...
+
+[student@servera ~]$ cd /usr/share/ceph-ansible
+[student@servera ceph-ansible]$ ansible-playbook site.yml
+
+
+[ceph@serverc ~]$ systemctl restart ceph-osd@0.service
+
+[ceph@serverc ~]$ ceph daemon osd.0 config get debug_osd
+{
+"debug_osd": "1/5"
+}
+
+
+Pagina 105
+GUIDED EXERCISE - MANAGING CEPH AUTHENTICATION
+----------------------------------------------
+
+[ceph@serverc ~]$ ceph osd pool ls
+
+[ceph@serverc ~]$ ceph auth get-or-create client.docedit \
+mon 'allow r' \
+osd 'allow rw pool=mypool namespace=docs' \
+-o /etc/ceph/ceph.client.docedit.keyring
+
+[ceph@serverc ~]$ ceph auth get-or-create client.docget \
+mon 'allow r' \
+osd 'allow r pool=mypool namespace=docs' \
+-o /etc/ceph/ceph.client.docget.keyring
+
+[ceph@serverc ~]$ ceph auth list
+
+[ceph@serverc ~]$ scp /etc/ceph/ceph.client.docedit.keyring servera:/etc/ceph/
+
+[ceph@serverc ~]$ scp /etc/ceph/ceph.client.docget.keyring servera:/etc/ceph/
+
+[ceph@servera ~]$ rados --id docedit -p mypool -N docs put testdoc /etc/services
+[ceph@servera ~]$ rados --id docget -p mypool -N docs get testdoc /tmp/test
+[ceph@servera ~]$ diff /etc/services /tmp/test
+
+[ceph@servera ~]$ rados --id docget -p mypool -N docs put mywritetest /etc/services
+error putting mypool/mywritetest: (1) Operation not permitted
+
+
+[ceph@serverc ~]$ ceph auth caps client.docget \
+mon 'allow r' \
+osd 'allow rw pool=mypool namespace=docs, allow rw pool=docarchive'
+
+[ceph@serverc ~]$ rados --id docget -p mypool -N docs put mywritetest /etc/services
+
+[ceph@serverc ~]$ rm /etc/ceph/ceph.client.docedit.keyring
+[ceph@serverc ~]$ ssh servera rm /etc/ceph/ceph.client.docedit.keyring
+
+[ceph@serverc ~]$ ceph auth del client.docedit
+
+[ceph@serverc ~]$ rm /etc/ceph/ceph.client.docget.keyring
+[ceph@serverc ~]$ ssh servera rm /etc/ceph/ceph.client.docget.keyring
+
+[ceph@serverc ~]$ ceph auth del client.docget
+
+Pagina 108
+LAB - CONFIGURING RED HAT CEPH STORAGE
+--------------------------------------
+[student@workstation ~]$ lab ceph-config setup
+
+[student@workstation ~]$ ssh ceph@serverc
+
+[ceph@serverc ~]$ ceph osd pool delete mypool mypool \
+--yes-i-really-really-mean-it
+
+[ceph@serverc ~]$ ceph osd pool create blue 64
+
+[ceph@serverc ~]$ ceph osd pool set blue size 3
+
+[ceph@serverc ~]$ ceph osd pool application enable blue rbd
+
+[ceph@serverc ~]$ ceph osd pool ls detail
+
+[ceph@serverc ~]$ ceph osd erasure-code-profile ls
+
+[ceph@serverc ~]$ ceph osd erasure-code-profile get default
+
+[ceph@serverc ~]$ ceph osd pool create yellow 64 64 erasure default
+
+[ceph@serverc ~]$ ceph osd pool application enable yellow rgw
+
+[ceph@serverc ~]$ ceph osd pool ls detail
+
+[ceph@serverc ~]$ ceph daemon mon.serverc config get mon_max_pg_per_osd
+{
+"mon_max_pg_per_osd": "200"
+}
+
+[student@servera ~]$ sudo vi /usr/share/ceph-ansible/group_vars/all.yml
+
+...
+ceph_conf_overrides:
+  global:
+    mon_osd_allow_primary_affinity: 1
+    mon_clock_drift_allowed: 0.5
+    osd_pool_default_size: 2
+    osd_pool_default_min_size: 1
+    mon_pg_warn_min_per_osd: 0
+    mon_pg_warn_max_per_osd: 0
+    mon_pg_warn_max_object_skew: 0
+    mon_allow_pool_delete: false  # add this line
+    mon_max_pg_per_osd: 400       # add this line
+  client:
+    rbd_default_features: 1
+...
+
+[student@servera ~]$ cd /usr/share/ceph-ansible
+[student@servera ceph-ansible]$ ansible-playbook site.yml
+
+[ceph@serverc ~]$ sudo systemctl restart ceph-mon.target
+[ceph@serverc ~]$ ceph daemon mon.serverc config get mon_allow_pool_delete
+{
+"mon_allow_pool_delete": "false"
+}
+
+[ceph@serverc ~]$ ceph daemon mon.serverc config get mon_max_pg_per_osd
+{
+"mon_max_pg_per_osd": "400"
+}
+
+[ceph@serverc ~]$ ceph auth get-or-create client.wcolor \
+mon 'allow r' \
+osd 'allow rw pool=blue' \
+-o /etc/ceph/ceph.client.wcolor.keyring
+
+[ceph@serverc ~]$ ceph auth get-or-create client.rcolor \
+mon 'allow r' \
+osd 'allow r pool=blue object_prefix rgb_' \
+-o /etc/ceph/ceph.client.rcolor.keyring
+
+[ceph@serverc ~]$ scp /etc/ceph/ceph.client.wcolor.keyring servera:/etc/ceph/
+
+[ceph@serverc ~]$ scp /etc/ceph/ceph.client.rcolor.keyring servera:/etc/ceph/
+
+[ceph@servera ~]$ rados --id wcolor -p blue put rgb_colors /etc/DIR_COLORS.256color
+
+[ceph@servera ~]$ rados --id rcolor -p blue get rgb_colors /tmp/color.out
+[ceph@servera ~]$ diff /etc/DIR_COLORS.256color /tmp/color.out
+
+[student@workstation ~]$ lab ceph-config grade
+
+[student@workstation ~]$ lab ceph-config cleanup
+
+
+CHAPTER 4 - PROVIDING BLOCK STORAGE WITH RBD
+--------------------------------------------
+
+Pagina 131
+GUIDED EXERCISE - MANAGING RADOS BLOCK DEVICES
+----------------------------------------------
+[ceph@serverc ~]$ ceph health
+
+[ceph@serverc ~]$ ceph osd pool create rbd 32 32
+
+[ceph@serverc ~]$ rbd pool init rbd
+
+[ceph@serverc ~]$ ceph df
+
+[ceph@serverc ~]$ ceph auth get-or-create client.rbd.servera \
+mon 'profile rbd' osd 'profile rbd' \
+-o /etc/ceph/ceph.client.rbd.servera.keyring
+
+[ceph@serverc ~]$ ceph auth list
+
+[ceph@servera ~]$ scp serverc:/etc/ceph/ceph.client.rbd.servera.keyring \
+/etc/ceph/ceph.client.rbd.servera.keyring
+
+[ceph@servera ~]$ export CEPH_ARGS='--id=rbd.servera'
+
+[ceph@servera ~]$ rbd ls
+
+[ceph@servera ~]$ rbd create rbd/test --size=128M
+[ceph@servera ~]$ rbd ls
+
+[ceph@servera ~]$ rbd info rbd/test
+
+[ceph@servera ~]$ sudo rbd --id rbd.servera map rbd/test
+
+[ceph@servera ~]$ rbd showmapped
+
+[ceph@servera ~]$ sudo mkfs.ext4 /dev/rbd0
+
+[ceph@servera ~]$ sudo mkdir /mnt/rbd
+
+[ceph@servera ~]$ sudo mount /dev/rbd0 /mnt/rbd
+
+[ceph@servera ~]$ sudo chown ceph:ceph /mnt/rbd
+
+[ceph@servera ~]$ df
+
+[ceph@servera ~]$ dd if=/dev/zero of=/tmp/testrbd bs=10M count=1
+
+[ceph@servera ~]$ cp /tmp/testrbd /mnt/rbd/test1
+
+[ceph@servera ~]$ ls /mnt/rbd
+
+[ceph@servera ~]$ df
+
+[ceph@servera ~]$ ceph df
+
+[ceph@servera ~]$ cp /tmp/testrbd /mnt/rbd/test2
+[ceph@servera ~]$ cp /tmp/testrbd /mnt/rbd/test3
+[ceph@servera ~]$ ls /mnt/rbd
+
+[ceph@servera ~]$ df
+
+[ceph@servera ~]$ ceph df
+
+[ceph@servera ~]$ rados -p rbd put test /tmp/testrbd
+
+[ceph@servera ~]$ ls /mnt/rbd
+
+[ceph@servera ~]$ df
+
+[ceph@servera ~]$ ceph df
+
+[ceph@servera ~]$ rbd du rbd/test
+
+[ceph@servera ~]$ rados -p rbd ls
+
+[ceph@servera ~]$ sudo umount /mnt/rbd
+
+[ceph@servera ~]$ sudo rbd --id rbd.servera unmap /dev/rbd0
+
+[ceph@servera ~]$ rbd showmapped
+
+[ceph@servera ~]$ rbd rm rbd/test
+
+[ceph@servera ~]$ rados -p rbd rm test
+
+[ceph@servera ~]$ rados -p rbd ls
+
+[ceph@servera ~]$ rbd create rbd/snaptest --size=128M
+
+[ceph@servera ~]$ sudo rbd --id rbd.servera map rbd/snaptest
+
+[ceph@servera ~]$ rbd showmapped
+
+[ceph@servera ~]$ sudo mkfs.ext4 /dev/rbd0
+
+[ceph@servera ~]$ rbd snap create rbd/snaptest@firstsnap
+
+[ceph@servera ~]$ sudo rbd --id rbd.servera map rbd/snaptest@firstsnap
+
+[ceph@servera ~]$ rbd showmapped
+
+[ceph@servera ~]$ sudo blockdev --getro /dev/rbd0
+
+[ceph@servera ~]$ sudo blockdev --getro /dev/rbd1
+
+[ceph@servera ~]$ sudo mkdir /mnt/org-rbd
+[ceph@servera ~]$ sudo mount /dev/rbd0 /mnt/org-rbd
+[ceph@servera ~]$ sudo chown ceph:ceph /mnt/org-rbd
+[ceph@servera ~]$ df
+
+[ceph@servera ~]$ ls /mnt/org-rbd
+
+[ceph@servera ~]$ dd if=/dev/zero of=/mnt/org-rbd/file0 bs=1M count=10
+
+[ceph@servera ~]$ ls /mnt/org-rbd
+
+[ceph@servera ~]$ df
+
+[ceph@servera ~]$ sudo mkdir /mnt/snap-rbd
+[ceph@servera ~]$ sudo mount /dev/rbd1 /mnt/snap-rbd
+
+[ceph@servera ~]$ sudo chown ceph:ceph /mnt/snap-rbd
+
+[ceph@servera ~]$ df
+
+[ceph@servera ~]$ ls /mnt/org-rbd
+
+[ceph@servera ~]$ ls /mnt/snap-rbd
+
+[ceph@servera ~]$ sudo umount /mnt/snap-rbd
+[ceph@servera ~]$ sudo umount /mnt/org-rbd
+[ceph@servera ~]$ df
+
+[ceph@servera ~]$ sudo rbd --id rbd.servera unmap /dev/rbd0
+
+[ceph@servera ~]$ sudo rbd --id rbd.servera unmap /dev/rbd1
+[ceph@servera ~]$ rbd showmapped
+[ceph@servera ~]$ rbd snap purge rbd/snaptest
+
+[ceph@servera ~]$ rbd rm rbd/snaptest
+
+[ceph@servera ~]$ rbd create rbd/clonetest --size=128M
+[ceph@servera ~]$ rbd info rbd/clonetest
+
+[ceph@servera ~]$ sudo rbd --id rbd.servera map rbd/clonetest
+
+[ceph@servera ~]$ rbd showmapped
+
+[ceph@servera ~]$ sudo mkfs.ext4 /dev/rbd0
+
+[ceph@servera ~]$ sudo mkdir /mnt/source
+[ceph@servera ~]$ sudo mount /dev/rbd0 /mnt/source
+[ceph@servera ~]$ sudo chown ceph:ceph /mnt/source
+[ceph@servera ~]$ dd if=/dev/zero of=/mnt/source/fileonsource bs=1M count=10
+
+[ceph@servera ~]$ ls /mnt/source
+
+[ceph@servera ~]$ sudo fsfreeze --freeze /mnt/source
+[ceph@servera ~]$ rbd snap create rbd/clonetest@clonesnap
+[ceph@servera ~]$ sudo fsfreeze --unfreeze /mnt/source
+[ceph@servera ~]$ rbd snap protect rbd/clonetest@clonesnap
+[ceph@servera ~]$ rbd snap ls rbd/clonetest
+
+[ceph@servera ~]$ rbd clone rbd/clonetest@clonesnap rbd/realclone
+
+[ceph@servera ~]$ sudo mkdir /mnt/clone
+[ceph@servera ~]$ sudo rbd --id rbd.servera map rbd/realclone
+
+[ceph@servera ~]$ sudo mount /dev/rbd1 /mnt/clone
+[ceph@servera ~]$ df
+
+[ceph@servera ~]$ sudo dd if=/dev/zero of=/mnt/clone/fileonclone bs=1M count=10
+
+[ceph@servera ~]$ ls -l /mnt/source
+
+[ceph@servera ~]$ ls -l /mnt/clone
+
+[ceph@servera ~]$ sudo umount /mnt/clone
+[ceph@servera ~]$ sudo umount /mnt/source
+[ceph@servera ~]$ df
+
+[ceph@servera ~]$ sudo rbd --id rbd.servera unmap /dev/rbd1
+[ceph@servera ~]$ sudo rbd --id rbd.servera unmap /dev/rbd0
+[ceph@servera ~]$ rbd showmapped
+
+[ceph@servera ~]$ rbd rm rbd/realclone
+
+[ceph@servera ~]$ rbd snap unprotect rbd/clonetest@clonesnap
+[ceph@servera ~]$ rbd snap purge rbd/clonetest
+
+[ceph@servera ~]$ rbd rm rbd/clonetest
+
+[ceph@servera ~]$ unset CEPH_ARGS
+
+
+
+Pagina 150
+GUIDED EXERCISE - CONFIGURING RBD MIRRORS
+-----------------------------------------
+[student@workstation ~]$ ssh student@servera
+
+[ceph@servera ~]$ scp serverc:/etc/ceph/ceph.conf /etc/ceph/prod.conf
+[ceph@servera ~]$ scp serverc:/etc/ceph/*admin*keyring \
+/etc/ceph/prod.client.admin.keyring
+
+[ceph@servera ~]$ scp serverf:/etc/ceph/ceph.conf /etc/ceph/bup.conf
+[ceph@servera ~]$ scp serverf:/etc/ceph/*admin*keyring \
+/etc/ceph/bup.client.admin.keyring
+
+[ceph@servera ~]$ scp /etc/ceph/prod* serverf:/etc/ceph/
+[ceph@servera ~]$ scp /etc/ceph/prod* serverc:/etc/ceph/
+
+[ceph@servera ~]$ scp /etc/ceph/bup* serverf:/etc/ceph/
+[ceph@servera ~]$ scp /etc/ceph/bup* serverc:/etc/ceph/
+
+[ceph@servera ~]$ ceph -s --cluster prod
+
+[ceph@servera ~]$ ceph -s --cluster bup
+
+[ceph@servera ~]$ ceph osd pool create rbd 32 --cluster bup
+[ceph@servera ~]$ rbd pool init rbd --cluster bup
+
+[ceph@servera ~]$ ceph health --cluster bup
+
+[student@servera ~]$ cd /home/student/serverf-cluster
+
+[student@servera serverf-cluster]$ vi serverf-cluster-hosts
+[mons]
+serverf
+[mgrs]
+serverf
+[osds]
+serverf
+[rbdmirrors]
+serverf
+
+[student@servera serverf-cluster]$ cp ./group_vars/rbd-mirrors.yml.sample \
+./group_vars/rbd-mirrors.yml
+
+[student@servera serverf-cluster]$ vi ./group_vars/rbd-mirrors.yml
+---
+dummy:
+ceph_rbd_mirror_configure: true
+ceph_rbd_mirror_pool: "rbd"
+ceph_rbd_mirror_remote_cluster: "prod"
+ceph_rbd_mirror_remote_user: "admin"
+
+[student@servera serverf-cluster]$ ansible-playbook site.yml \
+-i serverf-cluster-hosts
+
+[student@servera serverf-cluster]$ ssh ceph@serverf
+[ceph@serverf ~]$ ps -e | grep mirror
+
+[ceph@serverf ~]$ rbd mirror pool enable rbd pool --cluster bup
+[ceph@serverf ~]$ rbd mirror pool enable rbd pool --cluster prod
+
+[ceph@serverf ~]$ rbd mirror pool peer add rbd client.admin@prod --cluster bup
+
+[ceph@serverf ~]$ rbd mirror pool info rbd --cluster bup
+
+[ceph@serverf ~]$ rbd mirror pool info rbd --cluster prod
+
+[ceph@serverf ~]$ rbd mirror pool status rbd --cluster bup
+
+[ceph@serverf ~]$ rbd mirror pool status rbd --cluster prod
+
+[ceph@serverf ~]$ rbd create rbd/prod1 --size=128M \
+--image-feature=exclusive-lock,journaling --cluster prod
+
+[ceph@serverf ~]$ rbd mirror pool status rbd --cluster prod
+
+[ceph@serverf ~]$ rbd mirror pool status rbd --cluster bup
+
+[ceph@serverf ~]$ rbd ls --cluster prod
+
+[ceph@serverf ~]$ rbd ls --cluster bup
+
+[ceph@serverf ~]$ rbd mirror image status rbd/prod1 --cluster bup
+
+[ceph@serverf ~]$ rbd mirror pool status rbd --cluster prod
+
+[ceph@serverf ~]$ rbd rm rbd/prod1 --cluster prod
+
+[ceph@serverf ~]$ rbd ls --cluster prod
+[ceph@serverf ~]$ rbd ls --cluster bup
+
+[ceph@serverf ~]$ ceph osd pool create vp 32 --cluster prod
+
+[ceph@serverf ~]$ ceph osd pool create vp 32 --cluster bup
+
+[ceph@serverf ~]$ rbd pool init vp --cluster prod
+[ceph@serverf ~]$ rbd pool init vp --cluster bup
+
+[ceph@serverf ~]$ rbd mirror pool enable vp image --cluster prod
+[ceph@serverf ~]$ rbd mirror pool enable vp image --cluster bup
+[ceph@serverf ~]$ rbd mirror pool peer add vp client.admin@prod --cluster bup
+
+[ceph@serverf ~]$ rbd mirror pool info vp --cluster bup
+
+[ceph@serverf ~]$ rbd mirror pool info vp --cluster prod
+
+[ceph@serverf ~]$ rbd mirror pool status vp --cluster bup
+
+[ceph@serverf ~]$ rbd mirror pool status vp --cluster prod
+
+[ceph@serverf ~]$ rbd create vp/prod1 --size=128M \
+--image-feature=exclusive-lock,journaling --cluster prod
+
+[ceph@serverf ~]$ rbd -p vp ls --cluster prod
+
+[ceph@serverf ~]$ rbd -p vp ls --cluster bup
+
+[ceph@serverf ~]$ rbd mirror image enable vp/prod1 --cluster prod
+
+[ceph@serverf ~]$ rbd -p vp ls --cluster bup
+
+[ceph@serverf ~]$ rbd mirror image status vp/prod1 --cluster bup
+
+[ceph@serverf ~]$ rbd rm vp/prod1 --cluster prod
+
+[ceph@serverf ~]$ rbd -p vp ls --cluster prod
+[ceph@serverf ~]$ rbd -p vp ls --cluster bup
+[ceph@serverf ~]$ rm /etc/ceph/bup.* /etc/ceph/prod.*
+[ceph@serverf ~]$ ssh serverc rm /etc/ceph/bup.* /etc/ceph/prod.*
+[ceph@serverf ~]$ ssh servera rm /etc/ceph/bup.* /etc/ceph/prod.*
+
+Pagina 173
+GUIDED EXERCISE - IMPORTING AND EXPORTING RBD IMAGES
+----------------------------------------------------
+[ceph@serverc ~]$ ceph health
+
+[ceph@serverc ~]$ ssh-keygen
+
+[ceph@serverc ~]$ ssh-copy-id ceph@serverf
+
+[ceph@serverc ~]$ ssh serverf
+
+[ceph@serverf ~]$ ceph osd pool ls | grep rbd
+
+[ceph@serverf ~]$ ceph osd pool create rbd 32
+
+[ceph@serverf ~]$ rbd pool init rbd
+
+[ceph@serverc ~]$ rbd create rbd/test --size=128M
+[ceph@serverc ~]$ sudo rbd map rbd/test
+
+[ceph@serverc ~]$ sudo mkfs.ext4 /dev/rbd0
+
+[ceph@serverc ~]$ sudo mkdir /mnt/rbd
+[ceph@serverc ~]$ sudo mount /dev/rbd0 /mnt/rbd
+[ceph@serverc ~]$ sudo chown ceph:ceph /mnt/rbd
+[ceph@serverc ~]$ cp /etc/ceph/ceph.conf /mnt/rbd/file0
+[ceph@serverc ~]$ ls /mnt/rbd
+
+[ceph@serverc ~]$ ls -l /mnt/rbd
+
+[ceph@serverc ~]$ sudo umount /mnt/rbd
+
+[ceph@serverc ~]$ rbd export rbd/test ~/export.dat
+
+[ceph@serverc ~]$ ls -l ~/export.dat
+
+[ceph@serverc ~]$ cat ~/export.dat | ssh ceph@serverf \
+rbd import - rbd/test
+
+[ceph@serverf ~]$ rbd du rbd/test
+
+[ceph@serverf ~]$ sudo rbd map rbd/test
+
+[ceph@serverf ~]$ sudo mkdir /mnt/rbd
+[ceph@serverf ~]$ sudo mount /dev/rbd0 /mnt/rbd
+[ceph@serverf ~]$ df
+
+[ceph@serverf ~]$ ls -l /mnt/rbd
+
+[ceph@serverf ~]$ cat /mnt/rbd/file0
+
+[ceph@serverf ~]$ sudo umount /mnt/rbd
+[ceph@serverf ~]$ sudo rbd unmap /dev/rbd0
+
+[ceph@serverf ~]$ rbd snap create rbd/test@firstsnap
+[ceph@serverf ~]$ exit
+
+[ceph@serverc ~]$ rbd snap create rbd/test@firstsnap
+[ceph@serverc ~]$ rbd du rbd/test
+
+[ceph@serverc ~]$ sudo mount /dev/rbd0 /mnt/rbd
+[ceph@serverc ~]$ cp /etc/services /mnt/rbd/file1
+[ceph@serverc ~]$ cp /etc/resolv.conf /mnt/rbd/file2
+[ceph@serverc ~]$ cp /etc/ceph/ceph.client.admin.keyring /mnt/rbd/file3
+[ceph@serverc ~]$ ls -l /mnt/rbd
+
+[ceph@serverc ~]$ rbd du rbd/test
+
+[ceph@serverc ~]$ sudo umount /mnt/rbd
+
+[ceph@serverc ~]$ rbd snap create rbd/test@secondsnap
+[ceph@serverc ~]$ rbd du rbd/test
+
+[ceph@serverc ~]$ rbd export-diff --from-snap \
+firstsnap rbd/test@secondsnap - | ssh serverf rbd import-diff - rbd/test
+
+[ceph@serverc ~]$ ssh serverf
+[ceph@serverf ~]$ rbd du rbd/test
+
+[ceph@serverf ~]$ sudo rbd map rbd/test
+
+[ceph@serverf ~]$ sudo mount /dev/rbd0 /mnt/rbd
+[ceph@serverf ~]$ df
+
+[ceph@serverf ~]$ ls -l /mnt/rbd
+
+[ceph@serverf ~]$ sudo umount /mnt/rbd
+[ceph@serverf ~]$ sudo rbd unmap /dev/rbd0
+[ceph@serverf ~]$ rbd snap purge rbd/test
+
+[ceph@serverf ~]$ rbd rm rbd/test
+
+[ceph@serverf ~]$ exit
+[ceph@serverc ~]$ sudo rbd unmap /dev/rbd0
+[ceph@serverc ~]$ rbd snap purge rbd/test
+[ceph@serverc ~]$ rbd rm rbd/test
+
+
+Pagina 180
+LAB - PROVIDING BLOCK STORAGE WITH RBD
+--------------------------------------
+[student@workstation ~]$ lab ceph-rbd setup
+
+[student@workstation ~]$ ssh ceph@serverc
+
+[ceph@serverc ~]$ ceph osd pool create rbd125 32
+
+[ceph@serverc ~]$ rbd pool init rbd125
+
+[ceph@serverc ~]$ ceph osd pool ls detail | grep rbd125
+
+[ceph@serverc ~]$ rbd create rbd125/prod125 --size=128M
+
+[ceph@serverc ~]$ rbd -p rbd125 ls
+
+[ceph@serverc ~]$ exit
+[student@workstation ~]$ ssh ceph@servera
+
+[ceph@servera ~]$ rbd -p rbd125 ls
+
+[ceph@servera ~]$ sudo rbd map rbd125/prod125
+
+[ceph@servera ~]$ sudo mkfs.ext4 /dev/rbd0
+
+[ceph@servera ~]$ sudo mkdir /mnt/prod125
+
+[ceph@servera ~]$ sudo mount /dev/rbd0 /mnt/prod125
+
+[ceph@servera ~]$ sudo cp /etc/resolv.conf /mnt/prod125
+
+[ceph@servera ~]$ ls /mnt/prod125
+
+[ceph@servera ~]$ sudo umount /dev/rbd0
+[ceph@servera ~]$ sudo rbd unmap rbd125/prod125
+
+[ceph@servera ~]$ rbd snap create rbd125/prod125@beforeprod
+
+[ceph@servera ~]$ rbd snap list rbd125/prod125
+
+[ceph@servera ~]$ rbd export rbd125/prod125 /home/ceph/prod125.ext4
+
+[ceph@servera ~]$ ls -lh /home/ceph/prod125.ext4
+
+[ceph@servera ~]$ rbd import /home/ceph/prod125.ext4 rbd/img125
+
+[ceph@servera ~]$ rbd ls
+
+[student@workstation ~]$ lab ceph-rbd grade
+
+[student@workstation ~]$ lab ceph-rbd cleanup
+
+
+CHAPTER 5 - PROVIDING OBJECT STORAGE WITH RADOSGW
+-------------------------------------------------
+
+Pagina 195
+GUIDED EXERCISE - DEPLOYING A RADOS GATEWAY
+-------------------------------------------
+[student@workstation ~]$ ssh servera
+[student@servera ~]$ sudo vi /etc/ansible/hosts
+[mons]
+server[c:e]
+[mgrs]
+server[c:e]
+[osds]
+server[c:e]
+[clients]
+servera
+[rgws]
+servera
+
+[student@workstation ~]$ sudo vim /usr/share/ceph-ansible/group_vars/rgws.yml
+---
+copy_admin_key: true
+
+Add these paremeters to the current configuration file
+[student@workstation ~]$ /usr/share/ceph-ansible/group_vars/all.yml
+
+fetch_directory: ~/ceph-ansible-serverf-keys
+ntp_service_enabled: false
+ceph_origin: repository
+ceph_repository: rhcs
+ceph_rhcs_version: "3"
+ceph_repository_type: cdn
+rbd_cache: "true"
+rbd_cache_writethrough_until_flush: "false"
+rbd_client_directories: false
+monitor_interface: eth0
+journal_size: 1024
+public_network: 172.25.250.0/24
+cluster_network: "{{ public_network }}"
+radosgw_civetweb_port: 80 ## Add this line
+radosgw_interface: eth0   ## Add this line
+ceph_conf_overrides:
+  global:
+    mon_osd_allow_primary_affinity: 1
+    mon_clock_drift_allowed: 0.5
+    osd_pool_default_size: 2
+    osd_pool_default_min_size: 1
+    mon_pg_warn_min_per_osd: 0
+    mon_pg_warn_max_per_osd: 0
+    mon_pg_warn_max_object_skew: 0
+    mon_allow_pool_delete: false
+    mon_max_pg_per_osd: 400
+  client:
+    rbd_default_features: 1
+  client.rgw.servera:
+    rgw_dns_name: servera
+
+[student@servera ~]$ cd /usr/share/ceph-ansible
+[student@servera ceph-ansible]$ ansible-playbook site.yml --limit rgws
+
+[student@servera ceph-ansible]$ su - ceph
+
+[ceph@servera ~]$ ceph -s
+
+[ceph@servera ~]$ systemctl status ceph-radosgw@rgw.servera
+
+[ceph@servera ~]$ curl http://servera:80
+
+
+
+Pagina 204
+GUIDED EXERCISE - PROVIDING OBJECT STORAGE USING S3
+---------------------------------------------------
+[student@workstation ~]$ sudo vi /etc/dnsmasq.d/ceph125.conf
+[sudo] password for student: student
+address=/.servera/172.25.250.10
+[student@workstation ~]$ sudo systemctl restart dnsmasq
+
+[student@servera ~]$ systemctl status ceph-radosgw@*
+
+[student@servera ~]$ su - ceph
+
+[ceph@servera ~]$ radosgw-admin user create --uid="operator" \
+--display-name="S3 Operator" --email="operator@example.com" \
+--access_key="12345" --secret="67890"
+
+[student@servera ~]$ s3cmd --configure
+
+Enter new values or accept defaults in brackets with Enter.
+Refer to user manual for detailed description of all options.
+Access key and Secret key are your identifiers for Amazon S3. Leave them empty for
+using the env variables.
+Access Key: 12345
+Secret Key: 67890
+Default Region [US]: Enter
+Encryption password is used to protect your files from reading
+by unauthorized persons while in transfer to S3
+Encryption password: Enter
+Path to GPG program [/usr/bin/gpg]: Enter
+When using secure HTTPS protocol all communication with Amazon S3
+servers is protected from 3rd party eavesdropping. This method is
+slower than plain HTTP, and can only be proxied with Python 2.7 or newer
+Use HTTPS protocol [Yes]: No
+On some networks all internet access must go through a HTTP proxy.
+Try setting it here if you can't connect to S3 directly
+HTTP Proxy server name: Enter
+New settings:
+Access Key: 12345
+Secret Key: 67890
+Default Region: US
+Encryption password:
+Path to GPG program: /usr/bin/gpg
+Use HTTPS protocol: False
+HTTP Proxy server name:
+HTTP Proxy server port: 0
+Test access with supplied credentials? [Y/n] n
+Save settings? [y/N] y
+Configuration saved to '/home/student/.s3cfg'
+
+[student@servera ~]$ grep -r host_ ~/.s3cfg
+host_base = servera
+host_bucket = %(bucket)s.servera
+
+[student@servera ~]$ s3cmd mb s3://my-bucket
+
+[student@servera ~]$ s3cmd ls
+
+[student@servera ~]$ dd if=/dev/zero of=/tmp/10MB.bin bs=1024K count=10
+
+[student@servera ~]$ s3cmd put --acl-public /tmp/10MB.bin s3://my-bucket/10MB.bin
+
+[student@servera ~]$ wget -O /dev/null http://my-bucket.servera/10MB.bin
+
+[student@servera ~]$ wget -O /dev/null http://servera/my-bucket/10MB.bin
+
+[student@servera ~]$ su - ceph
+
+[ceph@servera ~]$ radosgw-admin user create --uid=admin \
+--display-name="Admin User" \
+--caps="users=read,write;usage=read,write; \
+buckets=read,write;zone=read,write" \
+--access-key="abcde" --secret="qwerty"
+
+[student@servera ~]$ wget -O ~/s3curl.pl \
+http://materials.example.com/s3curl.pl.txt
+
+[student@servera ~]$ wget -O ~/.s3curl \
+http://materials.example.com/s3curl.txt
+
+[student@servera ~]$ sudo yum install -y perl-Digest-HMAC
+
+[student@servera ~]$ chmod 0400 ~/.s3curl
+
+[student@servera ~]$ chmod +x ~/s3curl.pl
+
+[student@servera ~]$ ~/s3curl.pl --id=admin \
+-- 'http://servera/admin/bucket?uid=operator'
+
+[student@servera ~]$ su - ceph
+
+[ceph@servera ~]$ radosgw-admin bucket list
+
+[ceph@servera ~]$ radosgw-admin metadata get bucket:my-bucket
+
+
+
+Pagina 215
+GUIDED EXERCISE - PROVIDING OBJECT STORAGE USING OPENSTACK SWIFT
+----------------------------------------------------------------
+[student@workstation ~]$ ssh servera
+
+[student@servera ~]$ systemctl status ceph-radosgw@*
+
+[student@servera ~]$ su - ceph
+
+[ceph@servera ~]$ radosgw-admin subuser create --uid="operator" \
+--subuser="operator:swift" --access="full" \
+--secret="opswift"
+
+[ceph@servera ~]$ sudo yum -y install python-swiftclient
+
+[ceph@servera ~]$ swift -V 1.0 -A http://servera/auth/v1 \
+-U operator:swift -K opswift stat
+
+[ceph@servera ~]$ swift -V 1.0 -A http://servera/auth/v1 \
+-U operator:swift -K opswift list
+
+[ceph@servera ~]$ swift -V 1.0 -A http://servera/auth/v1 \
+-U operator:swift -K opswift post my-container
+[ceph@servera ~]$ swift -V 1.0 -A http://servera/auth/v1 \
+-U operator:swift -K opswift list
+
+[ceph@servera ~]$ dd if=/dev/zero of=/tmp/swift.dat bs=1024K count=10
+
+[ceph@servera ~]$ swift -V 1.0 -A http://servera/auth/v1 \
+-U operator:swift -K opswift upload my-container /tmp/swift.dat
+
+[ceph@servera ~]$ swift -V 1.0 -A http://servera/auth/v1 \
+-U operator:swift -K opswift stat my-container
+
+[ceph@servera ~]$ swift -V 1.0 -A http://servera/auth/v1 \
+-U operator:swift -K opswift stat
+
+
+Pagina 225
+GUIDED EXERCISE - CONFIGURING A MULTISITE RADOSGW DEPLOYMENT
+------------------------------------------------------------
+[student@workstation ~]$ lab radosgw-multisite setup
+
+[student@workstation ~]$ ssh ceph@servera
+[ceph@servera ~]$ ceph -s
+
+[student@workstation ~]$ ssh ceph@serverf
+[ceph@serverf ~]$ ceph -s
+
+[ceph@servera ~]$ SYSTEM_ACCESS_KEY="replication"
+[ceph@servera ~]$ SYSTEM_SECRET_KEY="secret"
+
+[ceph@serverf ~]$ SYSTEM_ACCESS_KEY="replication"
+[ceph@serverf ~]$ SYSTEM_SECRET_KEY="secret"
+
+[ceph@servera ~]$ radosgw-admin realm create --rgw-realm=ceph125 --default
+
+[ceph@servera ~]$ radosgw-admin zonegroup delete --rgw-zonegroup=default
+
+[ceph@servera ~]$ radosgw-admin zonegroup create --rgw-zonegroup=classroom \
+--endpoints=http://servera:80 --master --default
+
+[ceph@servera ~]$ radosgw-admin zone create --rgw-zonegroup=classroom \
+--rgw-zone=main --endpoints=http://servera:80 \
+--access-key=$SYSTEM_ACCESS_KEY --secret=$SYSTEM_SECRET_KEY
+
+[ceph@servera ~]$ radosgw-admin user create --uid="repl.user" \
+--display-name="Replication User" \
+--access-key=$SYSTEM_ACCESS_KEY --secret=$SYSTEM_SECRET_KEY \
+--system
+
+[ceph@servera ~]$ radosgw-admin period update --commit
+
+[ceph@servera ~]$ vi /etc/ceph/ceph.conf
+[client.rgw.servera]
+...output omitted...
+rgw_zone = main
+rgw_dynamic_resharding = false
+
+[ceph@servera ~]$ sudo systemctl restart ceph-radosgw@*
+
+[ceph@serverf ~]$ radosgw-admin realm pull --url=http://servera:80 \
+--access-key=$SYSTEM_ACCESS_KEY --secret=$SYSTEM_SECRET_KEY
+
+[ceph@serverf ~]$ radosgw-admin period pull --url=http://servera:80 \
+--access-key=$SYSTEM_ACCESS_KEY --secret=$SYSTEM_SECRET_KEY
+
+[ceph@serverf ~]$ radosgw-admin realm default --rgw-realm=ceph125
+[ceph@serverf ~]$ radosgw-admin zonegroup default --rgw-zonegroup=classroom
+
+[ceph@serverf ~]$ radosgw-admin zone create --rgw-zonegroup=classroom \
+--rgw-zone=fallback --endpoints=http://serverf:80 \
+--access-key=$SYSTEM_ACCESS_KEY --secret=$SYSTEM_SECRET_KEY \
+--default
+
+[ceph@serverf ~]$ radosgw-admin period update --commit --rgw-zone=fallback
+
+[ceph@serverf ~]$ vi /etc/ceph/ceph.conf
+[client.rgw.serverf]
+...output omitted...
+rgw_zone = fallback
+rgw_dynamic_resharding = false
+
+[ceph@serverf ~]$ sudo systemctl restart ceph-radosgw@*
+
+[ceph@serverf ~]$ radosgw-admin sync status
+
+[ceph@servera ~]$ radosgw-admin user create --uid="s3user" \
+--display-name="S3 User" --id rgw.servera \
+--access-key="s3user" --secret-key="password"
+
+[ceph@servera ~]$ radosgw-admin user list
+
+[ceph@serverf ~]$ radosgw-admin user list
+
+[ceph@servera ~]$ wget -O ~/.s3cfg \
+http://materials.example.com/radosgw-multisite/s3cfg.txt
+
+[ceph@servera ~]$ s3cmd mb s3://my-testbucket-main
+
+[ceph@servera ~]$ s3cmd put \
+--acl-public /etc/hosts s3://my-testbucket-main/hosts
+
+[ceph@serverf ~]$ radosgw-admin bucket list
+
+[ceph@serverf ~]$ wget -O hosts-servera \
+http://serverf/my-testbucket-main/hosts
+
+[student@workstation ~]$ lab radosgw-multisite cleanup
+
+
+Pagina 239
+LAB - PROVIDING OBJECT STORAGE WITH RADOSGW
+-------------------------------------------
+
+[student@workstation ~]$ lab radosgw-review setup
+
+[student@workstation ~]$ ssh servera
+[student@servera ~]$ cd ~/serverf-cluster
+[student@servera serverf-cluster]$ vi serverf-cluster-hosts
+[mons]
+serverf
+[mgrs]
+serverf
+[osds]
+serverf
+[rgws]
+serverf
+
+[student@servera serverf-cluster]$ cd group_vars
+[student@servera group_vars]$ cp rgws.yml.sample rgws.yml
+
+[student@servera group_vars]$ vi all.yml
+
+#add
+radosgw_civetweb_port: 80
+radosgw_interface: eth0
+  client.rgw.serverf:
+    rgw_dns_name: serverf
+
+[student@servera group_vars]$ cd ..
+[student@servera serverf-cluster]$ ansible-playbook site.yml \
+-i serverf-cluster-hosts --limit rgws
+
+[student@servera serverf-cluster]$ ssh ceph@serverf
+[ceph@serverf ~]$ ceph -s
+
+[student@workstation ~]$ sudo vi /etc/dnsmasq.d/ceph125.conf
+[sudo] password for student: student
+address=/.serverf/172.25.250.15
+[student@workstation ~]$ sudo systemctl restart dnsmasq
+
+[student@workstation ~]$ ssh ceph@serverf
+
+[ceph@serverf ~]$ radosgw-admin user create --uid="ouser" \
+--display-name="Object User" --email="ouser@example.com" \
+--access_key="ouser" --secret="redhat"
+
+[ceph@serverf ~]$ sudo yum -y localinstall \
+http://materials.example.com/s3cmd-1.6.1-1.el7.noarch.rpm
+
+[ceph@serverf ~]$ s3cmd --configure
+
+Enter new values or accept defaults in brackets with Enter.
+Refer to user manual for detailed description of all options.
+Access key and Secret key are your identifiers for Amazon S3. Leave them empty for
+using the env variables.
+Access Key: ouser
+Secret Key: redhat
+Default Region [US]: Enter
+Encryption password is used to protect your files from reading
+by unauthorized persons while in transfer to S3
+Encryption password: Enter
+Path to GPG program [/usr/bin/gpg]: Enter
+When using secure HTTPS protocol all communication with Amazon S3
+servers is protected from 3rd party eavesdropping. This method is
+slower than plain HTTP, and can only be proxied with Python 2.7 or newer
+Use HTTPS protocol [Yes]: No
+On some networks all internet access must go through a HTTP proxy.
+Try setting it here if you can't connect to S3 directly
+HTTP Proxy server name: Enter
+New settings:
+Access Key: ouser
+Secret Key: redhat
+Default Region: US
+Encryption password:
+Path to GPG program: /usr/bin/gpg
+Use HTTPS protocol: False
+HTTP Proxy server name:
+HTTP Proxy server port: 0
+Test access with supplied credentials? [Y/n] n
+Save settings? [y/N] y
+Configuration saved to '/home/ceph/.s3cfg'
+
+[ceph@serverf ~]$ vi ~/.s3cfg
+...output omitted...
+host_base = serverf
+host_bucket = %(bucket)s.serverf
+...
+
+[ceph@serverf ~]$ s3cmd mb s3://my-review-bucket
+
+[ceph@serverf ~]$ dd if=/dev/zero of=/tmp/10MB.bin bs=1024k count=10
+
+[ceph@serverf ~]$ s3cmd put --acl-public /tmp/10MB.bin \
+s3://my-review-bucket/10MB.bin
+
+[ceph@serverf ~]$ s3cmd get s3://my-review-bucket/10MB.bin \
+s3-download.bin
+
+[ceph@serverf ~]$ radosgw-admin user create --uid=admin \
+--display-name="Admin user" \
+--caps="users=read, write; usage=read, write; \
+buckets=read, write; zone=read, write" \
+--access-key="superuser" --secret="superpassword"
+
+[ceph@serverf ~]$ sudo yum -y install python-swiftclient
+
+[ceph@serverf ~]$ radosgw-admin subuser create --uid=ouser \
+--subuser="ouser:swift" --secret="ouswift" --access="full"
+
+[ceph@serverf ~]$ swift -V 1.0 -A http://serverf/auth/v1 \
+-U ouser:swift -K ouswift post my-review-container
+
+[ceph@serverf ~]$ swift -V 1.0 -A http://serverf/auth/v1 \
+-U ouser:swift -K ouswift list
+
+[ceph@serverf ~]$ dd if=/dev/zero of=swift.dat bs=1024 count=10
+
+[ceph@serverf ~]$ swift -V 1.0 -A http://serverf/auth/v1 \
+-U ouser:swift -K ouswift upload my-review-container swift.dat
+
+[ceph@serverf ~]$ swift -V 1.0 -A http://serverf/auth/v1 \
+-U ouser:swift -K ouswift download my-review-container swift.dat \
+-o swift-download.dat
+
+[student@workstation ~]$ lab radosgw-review grade
+
+[student@workstation ~]$ lab radosgw-review cleanup
+
+
+CHAPTER 6 - PROVIDING FILE STORAGE WITH CEPHFS
+----------------------------------------------
+
+Pagina 260
+GUIDED EXERCISE - PROVIDING FILE STORAGE WITH CEPHFS
+----------------------------------------------------
+
+[student@workstation ~]$ ssh servera
+[student@servera ~]$ sudo vi /etc/ansible/hosts
+[mons]
+server[c:e]
+[mgrs]
+server[c:e]
+[osds]
+server[c:e]
+[clients]
+servera
+[rgws]
+servera
+[mdss]
+servera
+
+[student@servera ~]$ cd /usr/share/ceph-ansible/group_vars
+[student@servera group_vars]$ sudo cp mdss.yml.sample mdss.yml
+[student@servera group_vars]$ cd ..
+
+[student@servera ceph-ansible]$ ansible-playbook site.yml
+
+[student@servera ceph-ansible]$ su - ceph
+[ceph@servera ~]$ ceph -s
+
+
+[ceph@servera ~]$ ceph df
+
+[ceph@servera ~]$ ceph auth get-key client.admin | sudo tee /root/asecret
+
+[ceph@servera ~]$ sudo mkdir /mnt/cephfs
+[ceph@servera ~]$ sudo mount -t ceph serverc:/ /mnt/cephfs \
+-o name=admin,secretfile=/root/asecret
+
+[ceph@servera ~]$ df /mnt/cephfs
+
+[ceph@servera ~]$ sudo chown student:student /mnt/cephfs
+
+[student@servera ceph-ansible]$ mkdir /mnt/cephfs/dir1
+[student@servera ceph-ansible]$ mkdir /mnt/cephfs/dir2
+[student@servera ceph-ansible]$ ls -al /mnt/cephfs
+
+[student@servera ceph-ansible]$ touch /mnt/cephfs/dir1/atestfile
+[student@servera ceph-ansible]$ dd if=/dev/zero of=/mnt/cephfs/dir1/ddtest \
+bs=1024 count=10000
+
+[student@servera ceph-ansible]$ sudo ceph mds set allow_new_snaps true \
+--yes-i-really-mean-it
+
+[student@servera ceph-ansible]$ ls -al /mnt/cephfs/dir1
+
+[student@servera ceph-ansible]$ mkdir /mnt/cephfs/.snap/mysnap
+
+[student@servera ceph-ansible]$ ls /mnt/cephfs/.snap/mysnap
+
+[student@servera ceph-ansible]$ ls -al /mnt/cephfs/.snap/mysnap/dir1
+
+[student@servera ceph-ansible]$ rm /mnt/cephfs/dir1/ddtest
+[student@servera ceph-ansible]$ ls -al /mnt/cephfs/dir1
+
+[student@servera ceph-ansible]$ ls -al /mnt/cephfs/.snap/mysnap/dir1
+
+[student@servera ceph-ansible]$ cp /mnt/cephfs/.snap/mysnap/dir1/ddtest /mnt/cephfs/dir1/
+[student@servera ceph-ansible]$ ls -al /mnt/cephfs/dir1
+
+[student@servera ceph-ansible]$ sudo rmdir /mnt/cephfs/.snap/mysnap
+[student@servera ceph-ansible]$ ls -al /mnt/cephfs/.snap
+
+[student@servera ceph-ansible]$ sudo ceph mds set allow_new_snaps false
+
+[student@servera ceph-ansible]$ getfattr -n ceph.dir.layout /mnt/cephfs/dir1
+
+[student@servera ceph-ansible]$ setfattr -n ceph.dir.layout.stripe_count -v 2 \
+/mnt/cephfs/dir1
+
+[student@servera ceph-ansible]$ getfattr -n ceph.dir.layout /mnt/cephfs/dir1
+
+[student@servera ceph-ansible]$ getfattr -n ceph.file.layout /mnt/cephfs/dir1/ddtest
+
+[student@servera ceph-ansible]$ touch /mnt/cephfs/dir1/anewfile
+[student@servera ceph-ansible]$ getfattr -n ceph.file.layout /mnt/cephfs/dir1/anewfile
+
+[student@servera ceph-ansible]$ setfattr -n ceph.file.layout.stripe_count \
+-v 3 /mnt/cephfs/dir1/anewfile
+[student@servera ceph-ansible]$ getfattr -n ceph.file.layout /mnt/cephfs/dir1/anewfile
+
+[student@servera ceph-ansible]$ echo "Not empty" >/mnt/cephfs/dir1/anewfile
+[student@servera ceph-ansible]$ setfattr -n ceph.file.layout.stripe_count \
+-v 4 /mnt/cephfs/dir1/anewfile
+
+[student@servera ceph-ansible]$ setfattr -x ceph.dir.layout /mnt/cephfs/dir1
+[student@servera ceph-ansible]$ touch /mnt/cephfs/dir1/a3rdfile
+[student@servera ceph-ansible]$ getfattr -n ceph.file.layout /mnt/cephfs/dir1/a3rdfile
+
+[student@servera ceph-ansible]$ sudo umount /mnt/cephfs
+
+CHAPTER 7 - CONFIGURING THE CRUSH MAP
+-------------------------------------
+
+Pagina 283
+GUIDED EXERCISE - MANAGING AND CUSTOMIZING THE CRUSH MAP
+--------------------------------------------------------
+
+[student@workstation ~]$ lab ceph-crush setup
+
+[student@workstation ~]$ ssh ceph@serverc
+
+[ceph@serverc ~]$ ceph health
+
+[ceph@serverc ~]$ ceph osd crush class ls
+
+[ceph@serverc ~]$ ceph osd crush tree
+
+[ceph@serverc ~]$ ceph osd crush rule create-replicated onssd default host ssd
+
+[ceph@serverc ~]$ ceph osd crush rule ls
+
+[ceph@serverc ~]$ ceph osd pool create myfast 32 32 onssd
+
+[ceph@serverc ~]$ ceph pg dump pgs_brief
+
+[ceph@serverc ~]$ ceph osd lspools
+
+[ceph@serverc ~]$ ceph pg dump pgs_brief | grep -F 29.
+
+[ceph@serverc ~]$ ceph osd crush add-bucket default-ceph125 root
+
+[ceph@serverc ~]$ ceph osd crush add-bucket rackblue rack
+
+[ceph@serverc ~]$ ceph osd crush add-bucket hostc host
+
+[ceph@serverc ~]$ ceph osd crush add-bucket rackgreen rack
+
+[ceph@serverc ~]$ ceph osd crush add-bucket hostd host
+
+[ceph@serverc ~]$ ceph osd crush add-bucket rackpink rack
+
+[ceph@serverc ~]$ ceph osd crush add-bucket hoste host
+
+[ceph@serverc ~]$ ceph osd crush move rackblue root=default-ceph125
+
+[ceph@serverc ~]$ ceph osd crush move hostc rack=rackblue
+
+[ceph@serverc ~]$ ceph osd crush move rackgreen root=default-ceph125
+
+[ceph@serverc ~]$ ceph osd crush move hostd rack=rackgreen
+
+[ceph@serverc ~]$ ceph osd crush move rackpink root=default-ceph125
+
+[ceph@serverc ~]$ ceph osd crush move hoste rack=rackpink
+
+[ceph@serverc ~]$ ceph osd crush tree
+
+[ceph@serverc ~]$ /usr/local/bin/my-crush-location --cluster ceph \
+--type osd --id 0
+
+[ceph@serverc ~]$ vi /etc/ceph/ceph.conf
+
+...output omitted...
+[osd]
+crush_location_hook = /usr/local/bin/my-crush-location
+osd journal size = 1024
+osd mkfs options xfs = -f -i size=2048
+
+[ceph@serverc ~]$ scp /etc/ceph/ceph.conf serverd:/etc/ceph
+
+[ceph@serverc ~]$ scp /etc/ceph/ceph.conf servere:/etc/ceph
+
+[ceph@serverc ~]$ sudo systemctl restart ceph-osd.target
+[ceph@serverc ~]$ ssh root@serverd systemctl restart ceph-osd.target
+
+[ceph@serverc ~]$ ssh root@servere systemctl restart ceph-osd.target
+
+[ceph@serverc ~]$ ceph osd crush tree
+
+[ceph@serverc ~]$ ceph osd getcrushmap -o ~/cm-org.bin
+
+[ceph@serverc ~]$ crushtool -d ~/cm-org.bin -o ~/cm-org.txt
+[ceph@serverc ~]$ echo $?
+0
+
+[ceph@serverc ~]$ cp ~/cm-org.txt ~/cm-new.txt
+[ceph@serverc ~]$ vi ~/cm-new.txt
+
+...
+rule ssd-first {
+id 5
+type replicated
+min_size 1
+max_size 10
+step take rackblue
+step chooseleaf firstn 1 type host
+step emit
+step take default-ceph125 class hdd
+step chooseleaf firstn -1 type rack
+step emit
+}
+
+[ceph@serverc ~]$ crushtool -c ~/cm-new.txt -o ~/cm-new.bin
+
+[ceph@serverc ~]$ crushtool -i ~/cm-new.bin --test --show-mappings \
+--rule=5 --num-rep 3
+
+[ceph@serverc ~]$ ceph osd setcrushmap -i ~/cm-new.bin
+
+[ceph@serverc ~]$ ceph osd crush rule ls
+
+[ceph@serverc ~]$ ceph osd pool create testcrush 32 32 ssd-first
+
+[ceph@serverc ~]$ ceph osd lspools
+
+[ceph@serverc ~]$ ceph pg dump pgs_brief | grep -F 30.
+
+[ceph@serverc ~]$ ceph osd pg-upmap-items 30.18 0 1
+
+[ceph@serverc ~]$ ceph osd set-require-min-compat-client luminous
+
+[ceph@serverc ~]$ ceph osd pg-upmap-items 30.18 0 1
+
+[ceph@serverc ~]$ ceph pg map 30.18
+
+[student@workstation ~]$ lab ceph-crush cleanup
